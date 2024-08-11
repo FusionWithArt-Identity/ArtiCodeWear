@@ -11,7 +11,7 @@ document.getElementById('login-form').addEventListener('submit', function(event)
 		document.getElementById('protected-content').style.display = 'block';
 		document.getElementById('subheading').style.display = 'block';
 	} else {
-		alert('Incorrect password!');
+		alert('Incorrect... Write Your Exact Name as You Provided While Ordering This Printed T-Shirt!');
 	}
 });
 
