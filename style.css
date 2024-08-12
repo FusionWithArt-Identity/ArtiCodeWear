@@ -111,7 +111,7 @@ body::before {
     }
 }
 
-@media only screen and (max-width: auto) {
+@media only screen and (max-width: 1000px) {
     #login-form {
         padding: 10px;
         border-radius: 20px;
