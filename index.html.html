@@ -1,0 +1,555 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>Audio Waveform Visualizer</title>
+<style>
+:root{
+  --bg:#07060a;
+  --glass: rgba(255,255,255,0.04);
+  --accent1: #7df9ff;
+  --accent2: #ff5cdf;
+  --neon: drop-shadow(0 0 10px rgba(125,249,255,0.25)) drop-shadow(0 0 30px rgba(255,92,223,0.06));
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; padding:24px; font-family:Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+  background: radial-gradient(1200px 800px at 10% 10%, rgba(125,249,255,0.03), transparent 6%),
+              radial-gradient(900px 700px at 90% 90%, rgba(255,92,223,0.03), transparent 6%),
+              var(--bg);
+  color:#e9eef8;
+  -webkit-font-smoothing:antialiased;
+}
+.container{max-width:980px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+.header{display:flex;flex-direction:column;gap:6px;align-items:center;text-align:center}
+.h1{font-size:26px;letter-spacing:0.6px}
+.h2{font-size:14px;color:#bfc9d9;}
+.panel{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border:1px solid rgba(255,255,255,0.04);backdrop-filter: blur(6px);border-radius:18px;padding:16px;box-shadow: 0 8px 30px rgba(0,0,0,0.6)}
+.center-area{display:flex;flex-direction:column;gap:12px;align-items:center}
+.card{width:100%;max-width:560px;border-radius:14px;padding:14px;position:relative;overflow:hidden}
+.sound-box{border-radius:12px;padding:12px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.015));border:1px solid rgba(125,249,255,0.08);}
+.wave-canvas{width:100%;height:140px;display:block;border-radius:8px;background:linear-gradient(180deg, rgba(0,0,0,0.12), transparent)}
+.controls{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+.btn{cursor:pointer;padding:8px 12px;border-radius:10px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:inherit;font-weight:600}
+.btn.primary{background:linear-gradient(90deg,var(--accent1),var(--accent2));color:#05060a;box-shadow:0 6px 30px rgba(125,249,255,0.06);}
+.small{font-size:12px;color:#a6b2c6}
+.large-wave{position:relative;width:100%;height:34px;margin-top:8px}
+.glow{position:absolute;inset:0;pointer-events:none;mix-blend-mode:screen}
+.carousel{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:8px}
+.card-item{height:120px;border-radius:12px;overflow:hidden;position:relative;transform-origin:center;transition:transform 500ms cubic-bezier(.22,.9,.2,1),opacity 300ms}
+.card-item img, .card-item video{width:100%;height:100%;object-fit:cover}
+.card-item.center{transform:scale(1.06);box-shadow:0 12px 40px rgba(0,0,0,0.6);opacity:1}
+.card-item.side{transform:translateY(14px) scale(.92);opacity:0.9;filter:brightness(.86)}
+.footer{display:flex;justify-content:space-between;align-items:center;padding-top:6px}
+.badge{font-size:12px;padding:6px 8px;border-radius:10px;background:linear-gradient(90deg, rgba(125,249,255,0.08), rgba(255,92,223,0.03));border:1px solid rgba(125,249,255,0.06)}
+.progress-container {width: 100%; height: 6px; background: rgba(255,255,255,0.05); border-radius: 3px; margin-top: 12px;}
+.progress-bar {height: 100%; background: linear-gradient(90deg, var(--accent1), var(--accent2)); border-radius: 3px; width: 0%; transition: width 0.1s;}
+.time-display {display: flex; justify-content: space-between; margin-top: 4px; font-size: 12px; color: #a6b2c6;}
+.audio-info {margin-top: 8px; font-size: 14px; text-align: center;}
+.volume-control {display: flex; align-items: center; gap: 8px; margin-top: 8px;}
+.volume-control input {width: 100px;}
+.status-message {margin-top: 8px; padding: 8px; border-radius: 8px; text-align: center;}
+.status-message.error {background: rgba(255, 92, 95, 0.15); color: #ff8a8a;}
+.status-message.success {background: rgba(92, 255, 128, 0.15); color: #8affa8;}
+@media (max-width:720px){
+  .carousel{grid-template-columns:repeat(1,1fr)}
+  .card-item{height:220px}
+  .card{max-width:420px}
+  .h1{font-size:20px}
+}
+.drop-area {
+  border: 2px dashed rgba(125, 249, 255, 0.3);
+  border-radius: 12px;
+  padding: 20px;
+  text-align: center;
+  margin-bottom: 16px;
+  transition: all 0.2s;
+  cursor: pointer;
+}
+.drop-area.highlight {
+  border-color: var(--accent1);
+  background: rgba(125, 249, 255, 0.05);
+}
+.supported-formats {
+  font-size: 12px;
+  margin-top: 8px;
+  color: #a6b2c6;
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div class="h1">Audio Waveform Visualizer</div>
+    <div class="h2">Upload any audio file to see it visualized with neon waveforms</div>
+  </div>
+
+  <div class="panel center-area">
+    <div id="dropArea" class="drop-area">
+      <p>Drag & drop an audio file here or click to browse</p>
+      <div class="supported-formats">Supports: MP3, WAV, OGG, AAC, FLAC, M4A</div>
+    </div>
+    
+    <div id="statusMessage" class="status-message" style="display:none;"></div>
+    
+    <div class="card sound-box">
+      <canvas id="wave" class="wave-canvas"></canvas>
+      <div class="large-wave">
+        <svg id="svgGlow" class="glow" viewBox="0 0 1000 34" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="g1" x1="0" x2="1">
+              <stop offset="0" stop-color="#7df9ff" stop-opacity="0.6"/>
+              <stop offset="1" stop-color="#ff5cdf" stop-opacity="0.6"/>
+            </linearGradient>
+            <filter id="blur"><feGaussianBlur stdDeviation="6"/></filter>
+          </defs>
+          <path id="glowPath" d="" stroke="url(#g1)" stroke-width="3" fill="none" filter="url(#blur)" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      
+      <div class="audio-info" id="audioInfo">
+        No audio loaded
+      </div>
+      
+      <div class="progress-container">
+        <div class="progress-bar" id="progressBar"></div>
+      </div>
+      <div class="time-display">
+        <span id="currentTime">0:00</span>
+        <span id="duration">0:00</span>
+      </div>
+      
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">
+        <div class="badge">Neon Visual</div>
+        <div class="small">Sync: WebAudio analyser</div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button class="btn primary" id="playBtn" disabled>Play</button>
+      <button class="btn" id="pauseBtn" disabled>Pause</button>
+      <button class="btn" id="stopBtn" disabled>Stop</button>
+      <label class="btn" for="audioFile">Browse Files</label>
+      <input id="audioFile" type="file" accept="audio/*" style="display:none">
+      
+      <div class="volume-control">
+        <span>🔈</span>
+        <input type="range" id="volumeControl" min="0" max="1" step="0.01" value="0.7">
+        <span>🔊</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer" style="width:100%;max-width:560px; margin: 0 auto;">
+    <div class="small">Drag & drop any audio file onto the page to visualize it</div>
+    <div class="small">Audio Waveform Visualizer</div>
+  </div>
+</div>
+
+<script>
+// DOM elements
+const canvas = document.getElementById('wave');
+const ctx = canvas.getContext('2d');
+const svgPath = document.getElementById('glowPath');
+const playBtn = document.getElementById('playBtn');
+const pauseBtn = document.getElementById('pauseBtn');
+const stopBtn = document.getElementById('stopBtn');
+const fileInput = document.getElementById('audioFile');
+const dropArea = document.getElementById('dropArea');
+const progressBar = document.getElementById('progressBar');
+const currentTimeDisplay = document.getElementById('currentTime');
+const durationDisplay = document.getElementById('duration');
+const audioInfo = document.getElementById('audioInfo');
+const volumeControl = document.getElementById('volumeControl');
+const statusMessage = document.getElementById('statusMessage');
+
+// Audio variables
+let audioCtx, analyser, sourceNode, audioBuffer, gainNode;
+let dataArray, bufferLength;
+let isPlaying = false;
+let startTime = 0;
+let pauseTime = 0;
+let animationId = null;
+
+// Initialize
+resizeCanvas();
+setupEventListeners();
+
+function resizeCanvas(){
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * devicePixelRatio;
+  canvas.height = rect.height * devicePixelRatio;
+  ctx.scale(devicePixelRatio, devicePixelRatio);
+}
+
+function setupEventListeners() {
+  window.addEventListener('resize', resizeCanvas);
+  
+  // File input
+  fileInput.addEventListener('change', handleFileSelect);
+  
+  // Drag and drop
+  dropArea.addEventListener('click', () => fileInput.click());
+  ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+    dropArea.addEventListener(eventName, preventDefaults, false);
+  });
+  ['dragenter', 'dragover'].forEach(eventName => {
+    dropArea.addEventListener(eventName, highlight, false);
+  });
+  ['dragleave', 'drop'].forEach(eventName => {
+    dropArea.addEventListener(eventName, unhighlight, false);
+  });
+  dropArea.addEventListener('drop', handleDrop, false);
+  
+  // Player controls
+  playBtn.addEventListener('click', playAudio);
+  pauseBtn.addEventListener('click', pauseAudio);
+  stopBtn.addEventListener('click', stopAudio);
+  volumeControl.addEventListener('input', updateVolume);
+}
+
+function preventDefaults(e) {
+  e.preventDefault();
+  e.stopPropagation();
+}
+
+function highlight() {
+  dropArea.classList.add('highlight');
+}
+
+function unhighlight() {
+  dropArea.classList.remove('highlight');
+}
+
+function handleDrop(e) {
+  const dt = e.dataTransfer;
+  const files = dt.files;
+  if (files.length > 0) {
+    const file = files[0];
+    // Check if the file is an audio file (loose check)
+    if (file.type.startsWith('audio/') || 
+        ['.mp3', '.wav', '.ogg', '.aac', '.flac', '.m4a'].some(ext => file.name.toLowerCase().endsWith(ext))) {
+      fileInput.files = files;
+      handleFileSelect({ target: fileInput });
+    } else {
+      showStatusMessage('Please select an audio file (MP3, WAV, OGG, etc.)', 'error');
+    }
+  }
+}
+
+function showStatusMessage(message, type = 'info') {
+  statusMessage.textContent = message;
+  statusMessage.className = 'status-message ' + type;
+  statusMessage.style.display = 'block';
+  
+  // Hide after 5 seconds
+  setTimeout(() => {
+    statusMessage.style.display = 'none';
+  }, 5000);
+}
+
+async function handleFileSelect(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  try {
+    // Show file info
+    audioInfo.textContent = `Loading: ${file.name} (${formatFileSize(file.size)})`;
+    
+    const arrayBuffer = await file.arrayBuffer();
+    await initAudioContext();
+    
+    // Try to decode the audio data
+    try {
+      audioBuffer = await decodeAudioData(audioCtx, arrayBuffer);
+    } catch (decodeError) {
+      console.error('Decode error:', decodeError);
+      // Try again with a different approach if the first attempt fails
+      audioBuffer = await alternativeDecodeAudioData(audioCtx, arrayBuffer);
+    }
+    
+    setupAudioNodes();
+    
+    // Update UI with file info
+    const duration = audioBuffer.duration;
+    audioInfo.textContent = `${file.name} (${formatTime(duration)})`;
+    durationDisplay.textContent = formatTime(duration);
+    
+    // Enable controls
+    playBtn.disabled = false;
+    pauseBtn.disabled = false;
+    stopBtn.disabled = false;
+    
+    // Reset progress
+    progressBar.style.width = '0%';
+    currentTimeDisplay.textContent = '0:00';
+    
+    // Stop any current playback
+    stopAudio();
+    
+    showStatusMessage('Audio file loaded successfully!', 'success');
+  } catch (error) {
+    console.error('Error loading audio:', error);
+    audioInfo.textContent = 'Error loading audio file';
+    showStatusMessage(`Failed to load audio: ${error.message}`, 'error');
+  }
+}
+
+// Improved audio decoding with fallback for MPEG files
+async function decodeAudioData(audioContext, arrayBuffer) {
+  return new Promise((resolve, reject) => {
+    audioContext.decodeAudioData(
+      arrayBuffer,
+      buffer => resolve(buffer),
+      error => reject(error)
+  });
+}
+
+// Alternative decoding method for problematic files
+async function alternativeDecodeAudioData(audioContext, arrayBuffer) {
+  // Create a temporary audio element as fallback
+  return new Promise((resolve, reject) => {
+    const audioElement = new Audio();
+    const blob = new Blob([arrayBuffer], { type: 'audio/mp3' }); // Try with MP3 type
+    const objectUrl = URL.createObjectURL(blob);
+    
+    audioElement.src = objectUrl;
+    
+    audioElement.oncanplaythrough = () => {
+      // Create an offline audio context to decode
+      const offlineCtx = new OfflineAudioContext(
+        audioElement.duration * 44100,
+        44100,
+        44100
+      );
+      
+      const source = offlineCtx.createBufferSource();
+      fetch(objectUrl)
+        .then(response => response.arrayBuffer())
+        .then(arrayBuffer => offlineCtx.decodeAudioData(arrayBuffer))
+        .then(buffer => {
+          source.buffer = buffer;
+          source.connect(offlineCtx.destination);
+          source.start();
+          return offlineCtx.startRendering();
+        })
+        .then(renderedBuffer => {
+          URL.revokeObjectURL(objectUrl);
+          resolve(renderedBuffer);
+        })
+        .catch(err => {
+          URL.revokeObjectURL(objectUrl);
+          reject(err);
+        });
+    };
+    
+    audioElement.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('Could not decode audio file'));
+    };
+  });
+}
+
+function initAudioContext() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 2048;
+    bufferLength = analyser.frequencyBinCount;
+    dataArray = new Uint8Array(bufferLength);
+    
+    // Create gain node for volume control
+    gainNode = audioCtx.createGain();
+    gainNode.gain.value = volumeControl.value;
+  }
+  return Promise.resolve();
+}
+
+function setupAudioNodes() {
+  if (sourceNode) {
+    sourceNode.disconnect();
+  }
+  
+  sourceNode = audioCtx.createBufferSource();
+  sourceNode.buffer = audioBuffer;
+  
+  // Connect nodes: source -> gain -> analyser -> destination
+  sourceNode.connect(gainNode);
+  gainNode.connect(analyser);
+  analyser.connect(audioCtx.destination);
+  
+  // Handle playback end
+  sourceNode.onended = () => {
+    isPlaying = false;
+    updateButtonStates();
+    cancelAnimationFrame(animationId);
+    progressBar.style.width = '100%';
+    currentTimeDisplay.textContent = formatTime(audioBuffer.duration);
+  };
+}
+
+function playAudio() {
+  if (isPlaying) return;
+  
+  if (!audioBuffer) {
+    showStatusMessage('No audio file loaded', 'error');
+    return;
+  }
+  
+  if (audioCtx.state === 'suspended') {
+    audioCtx.resume().then(() => {
+      startPlayback();
+    }).catch(err => {
+      showStatusMessage('Failed to resume audio: ' + err.message, 'error');
+    });
+  } else {
+    startPlayback();
+  }
+}
+
+function startPlayback() {
+  // Calculate offset if paused
+  const offset = pauseTime || 0;
+  
+  setupAudioNodes(); // Recreate source node each time
+  
+  try {
+    sourceNode.start(0, offset);
+    startTime = audioCtx.currentTime - offset;
+    isPlaying = true;
+    
+    updateButtonStates();
+    draw();
+  } catch (err) {
+    showStatusMessage('Playback error: ' + err.message, 'error');
+  }
+}
+
+function pauseAudio() {
+  if (!isPlaying) return;
+  
+  try {
+    sourceNode.stop();
+    pauseTime = audioCtx.currentTime - startTime;
+    isPlaying = false;
+    
+    updateButtonStates();
+    cancelAnimationFrame(animationId);
+  } catch (err) {
+    showStatusMessage('Pause error: ' + err.message, 'error');
+  }
+}
+
+function stopAudio() {
+  if (sourceNode) {
+    try {
+      sourceNode.stop();
+    sourceNode.disconnect();
+    sourceNode = null;
+    isPlaying = false;
+      pauseTime = 0;
+      startTime = 0;
+      
+      updateButtonStates();
+      cancelAnimationFrame(animationId);
+      
+      // Reset progress
+      progressBar.style.width = '0%';
+      currentTimeDisplay.textContent = '0:00';
+      
+      // Draw empty waveform
+      drawEmptyWaveform();
+    } catch (e) {
+      // Already stopped
+    }
+  }
+}
+
+function updateVolume() {
+  if (gainNode) {
+    gainNode.gain.value = volumeControl.value;
+  }
+}
+
+function updateButtonStates() {
+  playBtn.disabled = isPlaying || !audioBuffer;
+  pauseBtn.disabled = !isPlaying;
+  stopBtn.disabled = !audioBuffer;
+}
+
+function draw() {
+  if (!isPlaying) return;
+  
+  analyser.getByteTimeDomainData(dataArray);
+  
+  // Update progress
+  const currentTime = audioCtx.currentTime - startTime;
+  const progressPercent = (currentTime / audioBuffer.duration) * 100;
+  progressBar.style.width = `${Math.min(100, progressPercent)}%`;
+  currentTimeDisplay.textContent = formatTime(currentTime);
+  
+  // Draw waveform
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  ctx.clearRect(0, 0, w, h);
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.beginPath();
+  
+  const slice = w / bufferLength;
+  for (let i = 0; i < bufferLength; i++) {
+    const v = dataArray[i] / 128.0;
+    const y = v * h / 2;
+    if (i === 0) ctx.moveTo(0, y);
+    else ctx.lineTo(i * slice, y);
+  }
+  ctx.stroke();
+  
+  // Draw neon glow path (SVG)
+  let d = '';
+  for (let i = 0; i < w; i += 12) {
+    const idx = Math.floor(i / w * bufferLength);
+    const v = (dataArray[idx] || 128) / 255;
+    const amp = (v - 0.5) * 1.8;
+    const y = (h / 2) + amp * (h * 0.35);
+    const px = Math.floor(i / w * 1000);
+    const py = Math.round((y / h) * 34);
+    d += (i === 0 ? `M ${px} ${py}` : ` L ${px} ${py}`);
+  }
+  svgPath.setAttribute('d', d);
+  
+  animationId = requestAnimationFrame(draw);
+}
+
+function drawEmptyWaveform() {
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  ctx.clearRect(0, 0, w, h);
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = 'rgba(125,249,255,0.12)';
+  ctx.beginPath();
+  ctx.moveTo(0, h/2);
+  ctx.lineTo(w, h/2);
+  ctx.stroke();
+  
+  // Empty SVG path
+  svgPath.setAttribute('d', '');
+}
+
+function formatTime(seconds) {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+}
+
+function formatFileSize(bytes) {
+  if (bytes < 1024) return bytes + ' bytes';
+  else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+  else return (bytes / 1048576).toFixed(1) + ' MB';
+}
+
+// Initial empty waveform
+drawEmptyWaveform();
+</script>
+</body>
+</html>
